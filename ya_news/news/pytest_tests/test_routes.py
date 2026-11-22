@@ -1,43 +1,6 @@
 from http import HTTPStatus
 
 import pytest
-from django.urls import reverse
-
-
-@pytest.mark.parametrize(
-    'url_name',
-    ('news:home', 'users:login', 'users:signup'),
-)
-def test_news_are_available(client, db, url_name):
-    url = reverse(url_name)
-
-    response = client.get(url)
-
-    assert response.status_code == HTTPStatus.OK
-
-
-@pytest.mark.parametrize(
-    'url_fixture',
-    ('detail_news_url', 'delete_comment_url', 'edit_comment_url'),
-)
-def test_news_author_can_delete_or_edit(author_client, request, url_fixture):
-    url = request.getfixturevalue(url_fixture)
-
-    response = author_client.get(url)
-
-    assert response.status_code == HTTPStatus.OK
-
-
-@pytest.mark.parametrize(
-    'url_fixture',
-    ('delete_comment_url', 'edit_comment_url'),
-)
-def test_news_user_cannot_delete_or_edit(reader_client, request, url_fixture):
-    url = request.getfixturevalue(url_fixture)
-
-    response = reader_client.get(url)
-
-    assert response.status_code == HTTPStatus.NOT_FOUND
 
 
 @pytest.mark.parametrize(
@@ -46,11 +9,11 @@ def test_news_user_cannot_delete_or_edit(reader_client, request, url_fixture):
 )
 def test_anonymous_user_is_redirected_to_login(
     client,
+    login_url,
     request,
     url_fixture,
 ):
     url = request.getfixturevalue(url_fixture)
-    login_url = reverse('users:login')
     expected_url = f'{login_url}?next={url}'
 
     response = client.get(url)
@@ -59,16 +22,39 @@ def test_anonymous_user_is_redirected_to_login(
     assert response.url == expected_url
 
 
-def test_logout_accepts_post_request(author_client, logout_url):
+@pytest.mark.parametrize(
+    'client_fixture',
+    ('client', 'author_client', 'reader_client'),
+)
+def test_routes_other_users(client_fixture, request, db, subtests):
+    test_client = request.getfixturevalue(client_fixture)
 
-    response = author_client.post(logout_url)
+    cases = {
+        'client': (
+            ('home_url', 'get', HTTPStatus.OK),
+            ('login_url', 'get', HTTPStatus.OK),
+            ('signup_url', 'get', HTTPStatus.OK),
+            ('detail_news_url', 'get', HTTPStatus.OK),
+            ('logout_url', 'get', HTTPStatus.METHOD_NOT_ALLOWED),
+        ),
+        'author_client': (
+            ('detail_news_url', 'get', HTTPStatus.OK),
+            ('edit_comment_url', 'get', HTTPStatus.OK),
+            ('delete_comment_url', 'get', HTTPStatus.OK),
+            ('logout_url', 'post', HTTPStatus.OK),
+        ),
+        'reader_client': (
+            ('edit_comment_url', 'get', HTTPStatus.NOT_FOUND),
+            ('delete_comment_url', 'get', HTTPStatus.NOT_FOUND),
+        ),
+    }
 
-    assert response.status_code == HTTPStatus.OK
-    assert '_auth_user_id' not in author_client.session
+    for url_fixture, method, expected_status in cases[client_fixture]:
+        with subtests.test(url=url_fixture, client=client_fixture):
+            url = request.getfixturevalue(url_fixture)
+            response = getattr(test_client, method)(url)
 
+            assert response.status_code == expected_status
 
-def test_logout_rejects_get_request(client, logout_url):
-
-    response = client.get(logout_url)
-
-    assert response.status_code == HTTPStatus.METHOD_NOT_ALLOWED
+            if url_fixture == 'logout_url' and method == 'post':
+                assert '_auth_user_id' not in test_client.session

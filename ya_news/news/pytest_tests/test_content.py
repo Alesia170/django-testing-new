@@ -8,9 +8,12 @@ from news.pytest_tests.constants import NEWS_ON_PAGE
 def test_news_count_on_home_page(news_list, author_client, home_url):
 
     response = author_client.get(home_url)
-    object_list = list(response.context['object_list'])
 
-    assert len(object_list) == NEWS_ON_PAGE
+    assert 'object_list' in response.context
+
+    object_list = response.context['object_list']
+
+    assert object_list.count() == NEWS_ON_PAGE
 
 
 def test_news_are_sorted_newest_first(news_list, author_client, home_url):
@@ -36,7 +39,7 @@ def test_comments_are_sorted_oldest_first(
         for comment in response.context['news'].comment_set.all()
     ]
 
-    expected_date = sorted([comment.created for comment in comments_list])
+    expected_date = sorted(comment.created for comment in comments_list)
 
     assert comment_date == expected_date
 

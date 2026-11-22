@@ -57,34 +57,36 @@ def comment(author, news, db):
 @pytest.fixture
 def news_list(db):
     return News.objects.bulk_create(
-        [
+        (
             News(
                 title=f'Новость {index}',
                 text='Текст новости',
-                date=NEWS_DATE + timedelta(days=index)
+                date=NEWS_DATE + timedelta(days=index),
             )
             for index in range(NEWS_ON_PAGE + 1)
-        ]
+        )
     )
 
 
 @pytest.fixture
 def comments_list(author, news, db):
+    current_time = timezone.now()
+
     comments = Comment.objects.bulk_create(
-        [
+        (
             Comment(
                 news=news,
                 author=author,
                 text=f'Комментарий {index} с различающимся временем создания',
             )
             for index in range(COMMENT_COUNT)
-        ]
+        )
     )
 
     for index, comment in enumerate(comments):
-        comment.created = timezone.now() - timedelta(days=index)
+        comment.created = current_time - timedelta(days=index)
 
-    Comment.objects.bulk_update(comments, ['created'])
+    Comment.objects.bulk_update(comments, ('created',))
 
     return comments
 
@@ -92,6 +94,16 @@ def comments_list(author, news, db):
 @pytest.fixture
 def home_url():
     return reverse('news:home')
+
+
+@pytest.fixture
+def login_url():
+    return reverse('users:login')
+
+
+@pytest.fixture
+def signup_url():
+    return reverse('users:signup')
 
 
 @pytest.fixture

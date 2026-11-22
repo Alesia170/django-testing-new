@@ -1,5 +1,6 @@
 from http import HTTPStatus
 
+import pytest
 from news.models import Comment
 from news.pytest_tests.constants import (FORBIDDEN_WORDS_ERROR, FORM_DATA,
                                          FORM_DATA_EDIT, INVALID_COMMENT)
@@ -37,7 +38,7 @@ def test_add_comment_redirect_to_news_detail(author_client, detail_news_url):
 
     response = author_client.post(detail_news_url, data=FORM_DATA)
 
-    expected_url = detail_news_url + '#comments'
+    expected_url = f'{detail_news_url}#comments'
 
     assert response.url == expected_url
     assert response.status_code == HTTPStatus.FOUND
@@ -48,7 +49,7 @@ def test_edit_comment_redirect_to_news_detail(
 ):
 
     response = author_client.post(edit_comment_url, data=FORM_DATA_EDIT)
-    expected_url = detail_news_url + '#comments'
+    expected_url = f'{detail_news_url}#comments'
 
     assert response.url == expected_url
     assert response.status_code == HTTPStatus.FOUND
@@ -60,7 +61,7 @@ def test_delete_comment_redirect_to_news_detail(
 
     response = author_client.post(delete_comment_url)
 
-    expected_url = detail_news_url + '#comments'
+    expected_url = f'{detail_news_url}#comments'
 
     assert response.url == expected_url
     assert response.status_code == HTTPStatus.FOUND
@@ -73,6 +74,7 @@ def test_invalid_comment_shows_error_message(author_client, detail_news_url):
 
     form = response.context['form']
 
+    assert 'text' in form.errors
     assert FORBIDDEN_WORDS_ERROR in form.errors['text']
     assert Comment.objects.count() == comments_before
 
@@ -92,34 +94,36 @@ def test_author_edit_comment_do_not_change_author(
 
 
 def test_author_can_delete_his_comment(
-    author_client, delete_comment_url, comment
+    author_client, delete_comment_url, detail_news_url, comment
 ):
     comment_id = comment.pk
-    author_client.post(delete_comment_url)
+    response = author_client.post(delete_comment_url)
 
     assert not Comment.objects.filter(pk=comment_id).exists()
+    assert response.status_code == HTTPStatus.FOUND
+    assert response.url == f'{detail_news_url}#comments'
 
 
+@pytest.mark.parametrize(
+    'url_fixture, data',
+    (('edit_comment_url', FORM_DATA_EDIT), ('delete_comment_url', {})),
+)
 def test_reader_cannot_edit_delete_other_comments(
-    reader_client,
-    edit_comment_url,
-    delete_comment_url,
-    comment,
+    reader_client, url_fixture, comment, data, request
 ):
-    comment_id = comment.pk
+    url = request.getfixturevalue(url_fixture)
+
     original_text = comment.text
     original_author = comment.author
     original_news = comment.news
 
-    response = reader_client.post(edit_comment_url, data=FORM_DATA_EDIT)
+    response = reader_client.post(url, data=data)
+
+    assert response.status_code == HTTPStatus.NOT_FOUND
+    assert Comment.objects.filter(pk=comment.pk).exists()
+
     updated_comment = Comment.objects.get(pk=comment.pk)
 
     assert updated_comment.text == original_text
     assert updated_comment.author == original_author
     assert updated_comment.news == original_news
-    assert response.status_code == HTTPStatus.NOT_FOUND
-
-    response_delete = reader_client.post(delete_comment_url)
-
-    assert response_delete.status_code == HTTPStatus.NOT_FOUND
-    assert Comment.objects.filter(pk=comment_id).exists()
